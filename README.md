@@ -1,2 +1,11 @@
 # windows-file-mirror
 PowerShell script that uses native commands to recursively download files
+
+## Purpose 
+Provide a barebones Powershell script tested on the following version:
+
+|Major|Minor|Build|Revision|
+|---|---|---|---
+|5|1|17134|858
+
+If you are in a locked down environment, and you can't install any vastly superior tools, then this script will at least let you mirror a website.
