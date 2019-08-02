@@ -1,6 +1,9 @@
 # windows-file-mirror
 PowerShell script that uses native commands to recursively download files
 
+## ERROR
+This code is currently incomplete
+
 ## Purpose 
 Provide a barebones Powershell script tested on the following version:
 
