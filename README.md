@@ -1,4 +1,4 @@
-# windows-file-mirror
+# Sync-Website
 PowerShell script that uses native commands to recursively download files
 
 ## ERROR
