@@ -1,5 +1,5 @@
 # Sync-Website
-PowerShell script that uses native commands to recursively download files
+PowerShell script that uses `Invoke-WebRequest`, and `Start-BitsTransfer` commands to recursively download files
 
 ## Purpose 
 Provide a barebones Powershell script tested on the following version:
