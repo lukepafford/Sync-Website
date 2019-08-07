@@ -36,9 +36,14 @@ function crawl([string]$url) {
                     $global:visted += $absoluteLink
                     $global:urls += $absoluteLink
                 } else {
-                    # Download the file
                     $relativeDest = (Join-Path $dest (pathDifference $originalUri $linkUri))
-                    download $absoluteLink $relativeDest
+                    
+                    # Skip the download if the file already exists, unless overwrite_existing_files=True
+                    if ($overwrite_existing_files -or (!(Test-Path (Join-Path $relativeDest $linkUri.Segments[-1])))) {
+                        download $absoluteLink $relativeDest
+                    } else {
+		    	Write-Host "Skipping existing file: $absoluteLink"
+		    }
                 }
             }
         }
@@ -174,7 +179,11 @@ function Sync-Website {
     
         [Parameter(Mandatory=$false)]
         [string] 
-        $proxy = ''
+        $proxy = '',
+
+        [Parameter(Mandatory=$false)]
+        [Switch] 
+        $overwrite_existing_files = $false	
     )
 
     Process {
