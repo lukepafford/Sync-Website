@@ -11,11 +11,11 @@ Provide a barebones Powershell script tested on the following version:
 If you are in a locked down environment, and you can't install any vastly superior tools, then this script will at least let you mirror a website.
 
 ## Installation
-1. Open Powershell and create your user module directory
+1. Open Powershell and create the directory to store the module in
 
-   `New-Item -ItemType Directory -Force -Path $env:UserPROFILE\Documents\WindowsPowerShell\Modules`
+   `New-Item -ItemType Directory -Force -Path $env:UserPROFILE\Documents\WindowsPowerShell\Modules\SyncWebsite`
    
-2. Download the [SyncWebsite.psm1](https://raw.githubusercontent.com/lukepafford/Sync-Website/master/Sync-Website.ps1) module and save the module to the previously created modules directory
+2. Download the [SyncWebsite.psm1](https://raw.githubusercontent.com/lukepafford/Sync-Website/master/Sync-Website.ps1) module and save the module to the previously created directory
 
 ## Usage
 ```
