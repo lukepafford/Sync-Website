@@ -14,10 +14,14 @@ function crawl([string]$url) {
                 $global:visted += $link.AbsoluteUri
                 $global:urls += $link.AbsoluteUri
             } else {
-                $relativeDest = (Join-Path $dest (pathDifference $originalUri $link.AbsoluteUri))
-                    
+                $relativeDest = (Join-Path $Destination (pathDifference $originalUri $link.AbsoluteUri))
+                $filename = (Join-Path $relativeDest $link.Segments[-1])
+
                 # Skip the download if the file already exists, unless overwrite_existing_files=True
-                if ($overwrite_existing_files -or (!(Test-Path (Join-Path $relativeDest $link.Segments[-1])))) {
+                if ($overwrite_existing_files -or (!(Test-Path $filename))) {
+                    if ($Save_File_List -eq $true) {
+                        $global:downloaded += $filename
+                    }
                     download $link.AbsoluteUri $relativeDest
                 } else {
                     Write-Host "Skipping existing file: $link.AbsoluteUri"
@@ -158,9 +162,24 @@ function download([string]$url, [string]$dest) {
 
 function Sync-Website {
    <#
-   .EXAMPLE
+   .PARAMETER Destination
+   Root directory that the files will be downloaded into. This directory will be created if it does not exist.
 
-   PS> Sync-Website.ps1 -url https://example.com/packages -dest .\downloadDir -proxy 'http://XX.XX.X.XXX:443'
+   .PARAMETER Proxy
+   Be sure to include the protocol in the proxy value. If the host is `192.168.1.10`, and the port is `443`,
+   then the proxy value should be `http://192.168.1.10:443`.
+
+   .PARAMETER Overwrite_Existing_Files
+   By default the script will not download a file if it already exists at the destination. Set this switch to force the file to be downloaded.
+
+   .PARAMETER Save_File_List
+   Write a file to the root of the provided `Destination` that includes the fully qualified path of the downloaded file; One file per line.
+   This allows you to easily pass the newest files to stdin for a copy job.
+   
+   The filename will be 'downloaded_files.txt'.
+
+   .EXAMPLE
+    Sync-Website.ps1 -url https://example.com/packages -dest .\downloadDir -proxy 'http://XX.XX.X.XXX:443'
 
    #>
    
@@ -168,19 +187,23 @@ function Sync-Website {
     param(
         [Parameter(Mandatory=$true)]
         [String] 
-        $url,
+        $Url,
     
         [Parameter(Mandatory=$false)]
         [string]
-        $dest = (Get-Location),
+        $Destination = (Get-Location),
     
         [Parameter(Mandatory=$false)]
         [string] 
-        $proxy = '',
+        $Proxy = '',
 
         [Parameter(Mandatory=$false)]
         [Switch] 
-        $overwrite_existing_files = $false
+        $Overwrite_Existing_Files = $false,
+        
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $Save_File_List = $false
     )
 
     Process {
@@ -188,12 +211,18 @@ function Sync-Website {
 
         [string[]]$global:urls = @($url)
         [string[]]$global:visited = @()
+        [string[]]$global:downloaded = @()
         while($global:urls.count -gt 0){
 	        $current = $global:urls[0]
 	        $global:urls[0] = $null
 	        $global:urls = ($global:urls | ? { $_ -ne $null -and $_ -ne ''})
 	        crawl($current)
         }
+
+        if ($Save_File_List -eq $true) {
+            $global:downloaded | Out-File -FilePath "$Destination\downloaded_files.txt"
+        }
+
     }
 }
 
