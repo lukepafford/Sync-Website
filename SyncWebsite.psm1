@@ -1,52 +1,48 @@
 function crawl([string]$url) {
     $url = $url.TrimEnd('/')
 
-    $uri = (makeUri $url)
+    $uri = $url | makeUri
     $html = (isHtml $url)
     if ($html) {
         $result = request $url "GET" $proxy
 
-        $absoluteLinks = @()
-        foreach ($link in $result.links) {
-            try {
-                $absoluteLink = (makeAbsolute $uri $link.href)
-                $linkUri = (makeUri $absoluteLink)
-            } catch {
-                # If creating a [system.uri] fails then the URL isn't valid
-                # and it should not be crawled
-                continue
-            }
+        $validLinks = $result.links | % {$_.href } | noGarbageHref | makeAbsolute $uri | makeUri | noExternalDomains $uri | noParentLinks $uri
 
-            # Skip a garbage href
-            if ($link.href -eq "/" -or $link.href.StartsWith('?')) {
-                continue
-            } 
-   
-            # Skip links that point to external sites.
-            elseif ((isDifferentDomain $uri $linkUri) -eq $true) {
-                continue
-            }
-            # Skip any parent directories.
-            elseif ((isParentDirectory $uri $linkUri) -eq $true) {
-                continue   
-            }
-            else {
-                $html = (isHtml $absoluteLink)
-                if ($html -and $absoluteLink -notin $global:visted) {
-                    $global:visted += $absoluteLink
-                    $global:urls += $absoluteLink
-                } else {
-                    $relativeDest = (Join-Path $dest (pathDifference $originalUri $linkUri))
+        foreach ($link in $validLinks) {
+            $html = (isHtml $link.AbsoluteUri)
+            if ($html -and $link.Absoluteuri -notin $global:visted) {
+                $global:visted += $link.AbsoluteUri
+                $global:urls += $link.AbsoluteUri
+            } else {
+                $relativeDest = (Join-Path $dest (pathDifference $originalUri $link.AbsoluteUri))
                     
-                    # Skip the download if the file already exists, unless overwrite_existing_files=True
-                    if ($overwrite_existing_files -or (!(Test-Path (Join-Path $relativeDest $linkUri.Segments[-1])))) {
-                        download $absoluteLink $relativeDest
-                    } else {
-		    	Write-Host "Skipping existing file: $absoluteLink"
-		    }
+                # Skip the download if the file already exists, unless overwrite_existing_files=True
+                if ($overwrite_existing_files -or (!(Test-Path (Join-Path $relativeDest $link.Segments[-1])))) {
+                    download $link.AbsoluteUri $relativeDest
+                } else {
+                    Write-Host "Skipping existing file: $link.AbsoluteUri"
                 }
             }
         }
+    }
+}
+
+filter noGarbageHref {
+    if (!($_ -eq "/" -or $_.StartsWith('?'))) {
+        $_
+    }
+}
+
+
+filter noExternalDomains([System.Uri]$uri) {
+    if (!(isdifferentDomain $uri $_)) {
+        $_
+    }
+}
+
+filter noParentLinks([System.Uri]$uri) {
+    if (!(isParentLink $uri $_)) {
+        $_
     }
 }
 
@@ -64,9 +60,8 @@ function request([string]$url, [string]$method = "GET", [string]$proxy = '') {
     return $result
 }
 
-function makeUri([string]$url) {
-    $uri = (New-Object -typeName 'System.Uri' -argumentList ([system.uri]$url).AbsoluteUri)
-    return $uri
+filter makeUri {
+        New-Object -typeName 'System.Uri' -argumentList $_    
 }
 
 function isHTML([string]$url) {
@@ -95,7 +90,7 @@ function isDifferentDomain([System.Uri]$parent, [System.Uri]$child) {
     }
 }
 
-function isParentDirectory([System.Uri]$parent, [System.Uri]$child) {
+function isParentLink([System.Uri]$parent, [System.Uri]$child) {
     if ($parent.AbsolutePath.length -gt $child.AbsolutePath.length) {
         return $true
     } else {
@@ -103,15 +98,17 @@ function isParentDirectory([System.Uri]$parent, [System.Uri]$child) {
     }
 }
 
-function makeAbsolute([System.Uri]$parent, [string]$child) {
-    if ((isAbsolute $child) -eq $true) {
-        return $child
-    } else {
-      if ($child.StartsWith('/')) {
-        return $($parent.Scheme) + '://' + $($parent.Host) + $child
-      } else {
-        return $($parent.AbsoluteUri), $child -join "/"
-      }
+function makeAbsolute([System.Uri]$parent) {
+    Process {
+        if ((isAbsolute $_) -eq $true) {
+            return $_
+        } else {
+          if ($_.StartsWith('/')) {
+            return $($parent.Scheme) + '://' + $($parent.Host) + $_
+          } else {
+            return $($parent.AbsoluteUri), $_ -join "/"
+          }
+        }
     }
 }
 
@@ -183,11 +180,11 @@ function Sync-Website {
 
         [Parameter(Mandatory=$false)]
         [Switch] 
-        $overwrite_existing_files = $false	
+        $overwrite_existing_files = $false
     )
 
     Process {
-        $originalUri = makeUri $url
+        $originalUri = $url | makeUri
 
         [string[]]$global:urls = @($url)
         [string[]]$global:visited = @()
@@ -198,7 +195,6 @@ function Sync-Website {
 	        crawl($current)
         }
     }
-
 }
 
 Export-ModuleMember -Function Sync-Website
