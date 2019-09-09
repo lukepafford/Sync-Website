@@ -1,15 +1,19 @@
-function crawl([string]$url) {
+function crawl(
+    [string]$url,
+    [string]$Thumbprint
+) {
     $url = $url.TrimEnd('/')
-
     $uri = $url | makeUri
-    $html = (isHtml $url)
+
+    $html = (isHtml $url $Thumbprint)
+
     if ($html) {
-        $result = request $url "GET" $proxy
+        $result = request $url "GET" $proxy $Thumbprint
 
         $validLinks = $result.links | % {$_.href } | noGarbageHref | makeAbsolute $uri | makeUri | noExternalDomains $uri | noParentLinks $uri
 
         foreach ($link in $validLinks) {
-            $html = (isHtml $link.AbsoluteUri)
+            $html = (isHtml $link.AbsoluteUri $Thumbprint)
             if ($html -and $link.Absoluteuri -notin $global:visted) {
                 $global:visted += $link.AbsoluteUri
                 $global:urls += $link.AbsoluteUri
@@ -22,7 +26,27 @@ function crawl([string]$url) {
                     if ($Save_File_List -eq $true) {
                         $global:downloaded += $filename
                     }
-                    download $link.AbsoluteUri $relativeDest
+		    # If the thumprint is available we *must* use the Invoke-Webrequest
+		    # command because Start-BitsTransfer does *not* have any options to pass in a
+		    # certificate. 
+                    if($Thumbprint -notlike $null) {
+                        if(!(Test-Path $relativeDest)) {
+                            mkdir -Path $relativeDest | Out-Null
+                        }
+                        $args = @{
+                            Uri = $link.AbsoluteUri
+                            Method = "GET"
+                            CertificateThumbprint = $Thumbprint
+                            OutFile = $filename
+                        }
+                        if($proxy -notlike $null) {
+                            $args.Proxy = $proxy
+                            $args.proxyUseDefaultCredentials = $true
+                        }
+                        Invoke-WebRequest @args
+                    } else {
+                        download $link.AbsoluteUri $relativeDest
+                    }
                 } else {
                     Write-Host "Skipping existing file: $link.AbsoluteUri"
                 }
@@ -50,17 +74,26 @@ filter noParentLinks([System.Uri]$uri) {
     }
 }
 
-function request([string]$url, [string]$method = "GET", [string]$proxy = '') {
+function request(
+    [string]$url, 
+    [string]$method = "GET", 
+    [string]$proxy = '', 
+    [string]$Thumbprint = ''
+) {
     $arguments = @{
         Method = $method
-        URI = $url
+        Uri = $url
     }
-    if ($proxy) {
+    if ($proxy -notlike $null) {
         $arguments.proxy = $proxy
         $arguments.proxyUseDefaultCredentials = $true
     }
+    if ($Thumbprint -notlike $null) {
+        $arguments.CertificateThumbprint = $Thumbprint
+    }
 
     $result = Invoke-WebRequest @arguments
+    
     return $result
 }
 
@@ -68,8 +101,12 @@ filter makeUri {
         New-Object -typeName 'System.Uri' -argumentList $_    
 }
 
-function isHTML([string]$url) {
-    $result = request $url "HEAD" $proxy
+function isHTML(
+    [string]$url,
+    [string]$Thumbprint = ''
+) {
+    $result = request $url "HEAD" "" $Thumbprint
+
     $contentType = $result.headers.'Content-Type'
     if ($contentType -match '^text/html') {
         return $true
@@ -110,7 +147,7 @@ function makeAbsolute([System.Uri]$parent) {
           if ($_.StartsWith('/')) {
             return $($parent.Scheme) + '://' + $($parent.Host) + $_
           } else {
-            return $($parent.AbsoluteUri), $_ -join "/"
+            return $($parent.Scheme + "://" + $parent.Host), $_ -join "/"
           }
         }
     }
@@ -141,7 +178,6 @@ function download([string]$url, [string]$dest) {
     if (!(test-path $dest)) {
         New-Item -ItemType Directory -Force -Path $dest
     }
-
     $arguments = @{
         Source = $url
         Destination = $dest
@@ -178,6 +214,9 @@ function Sync-Website {
    
    The filename will be 'downloaded_files.txt'.
 
+    .PARAMETER Certificate
+    Use a client certificate to authenticate to the website.
+
    .EXAMPLE
     Sync-Website.ps1 -url https://example.com/packages -dest .\downloadDir -proxy 'http://XX.XX.X.XXX:443'
 
@@ -203,8 +242,20 @@ function Sync-Website {
         
         [Parameter(Mandatory=$false)]
         [switch]
-        $Save_File_List = $false
+        $Save_File_List = $false,
+
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $Certificate = $false
     )
+
+    begin {
+        if($Certificate) {
+            Add-Type -AssemblyName System.Security
+            $ValidCerts = [System.Security.Cryptography.X509Certificates.X509Certificate2[]](Get-ChildItem Cert:\CurrentUser\My)
+            $Cert = ([System.Security.Cryptography.X509Certificates.X509Certificate2UI]::SelectfromCollection($ValidCerts,'Choose a certificate','Choose a certificate', 0))[0]
+        }
+    }
 
     Process {
         $originalUri = $url | makeUri
@@ -215,8 +266,12 @@ function Sync-Website {
         while($global:urls.count -gt 0){
 	        $current = $global:urls[0]
 	        $global:urls[0] = $null
-	        $global:urls = ($global:urls | ? { $_ -ne $null -and $_ -ne ''})
-	        crawl($current)
+            $global:urls = ($global:urls | Where-Object { $_ -ne $null -and $_ -ne ''})
+            if($Certificate) {
+                crawl $current ($Cert.Thumbprint)
+            } else {
+                crawl($current)
+            }
         }
 
         if ($Save_File_List -eq $true) {
